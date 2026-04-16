@@ -15,8 +15,12 @@ const UsageLogSchema = new mongoose.Schema({
   },
   sessionDuration: {
     type: Number,
-    default: 0
+    default: 0,
+    min: 0
   }
 });
+
+// FIX: TTL index to auto-expire logs after 90 days — prevents unbounded growth
+UsageLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 90 });
 
 module.exports = mongoose.model('UsageLog', UsageLogSchema);

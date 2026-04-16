@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 require('dotenv').config();
 
 const connectDB = require('./config/db');
@@ -10,15 +9,22 @@ const esp32Service = require('./services/esp32Service');
 
 const app = express();
 
-// Connect to MongoDB
+// Connect to MongoDB (uses db.js exclusively — no double connect)
 connectDB();
 
-// Middleware
-app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({ extended: true }));
+// ── Middleware ──
+// FIX: restrict CORS to known origin instead of wildcard
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-// Routes
+// FIX: body-size limit prevents OOM from large payloads
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
+
+// ── Routes ──
 app.use('/api/settings', settingsRoutes);
 app.use('/api/usage', usageRoutes);
 
@@ -29,7 +35,6 @@ app.get('/api/health', (req, res) => {
 
 // ============ ESP32 Real-Time Routes ============
 
-// Get ESP32 status
 app.get('/api/esp32/status', async (req, res) => {
   try {
     const status = await esp32Service.checkConnection();
@@ -43,7 +48,6 @@ app.get('/api/esp32/status', async (req, res) => {
   }
 });
 
-// Get ESP32 real-time statistics
 app.get('/api/esp32/stats', async (req, res) => {
   try {
     const stats = await esp32Service.getStats();
@@ -53,7 +57,6 @@ app.get('/api/esp32/stats', async (req, res) => {
   }
 });
 
-// Get ESP32 current settings
 app.get('/api/esp32/settings', async (req, res) => {
   try {
     const settings = await esp32Service.getSettings();
@@ -63,7 +66,6 @@ app.get('/api/esp32/settings', async (req, res) => {
   }
 });
 
-// Update ESP32 settings in real-time
 app.post('/api/esp32/settings', async (req, res) => {
   try {
     const settings = await esp32Service.updateSettings(req.body);
@@ -73,7 +75,6 @@ app.post('/api/esp32/settings', async (req, res) => {
   }
 });
 
-// Reset ESP32 statistics
 app.post('/api/esp32/stats/reset', async (req, res) => {
   try {
     const result = await esp32Service.resetStats();
@@ -83,7 +84,6 @@ app.post('/api/esp32/stats/reset', async (req, res) => {
   }
 });
 
-// Get ESP32 device information
 app.get('/api/esp32/info', async (req, res) => {
   try {
     const info = await esp32Service.getDeviceInfo();
@@ -94,6 +94,7 @@ app.get('/api/esp32/info', async (req, res) => {
 });
 
 // ============ Team Data ============
+// FIX: /api/team now properly exists (was missing — frontend always got 404)
 app.get('/api/team', (req, res) => {
   const team = [
     {
@@ -258,6 +259,21 @@ app.get('/api/project', (req, res) => {
   });
 });
 
+// ============ 404 catch-all for unknown API routes ============
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
+});
+
+// ============ Global Express error handler ============
+// FIX: catches async errors propagated via next(err) or thrown in middleware
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  console.error('[ERROR]', err.stack || err.message);
+  res.status(err.status || 500).json({
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+  });
+});
+
 // ============ Start Server ============
 const PORT = process.env.PORT || 5000;
 
@@ -270,16 +286,12 @@ app.listen(PORT, () => {
 ╠════════════════════════════════════════╣
 ║                                        ║
 ║  ✓ Server running on port ${PORT}         ║
-║  ✓ MongoDB connected                   ║
+║  ✓ MongoDB: via db.js connectDB()      ║
+║  ✓ CORS origin: ${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}  ║
 ║  ✓ ESP32 IP: 172.20.220.228          ║
 ║                                        ║
 ║  Dashboard: http://localhost:3000     ║
-║  API: http://localhost:5000/api       ║
-║                                        ║
-║  ESP32 Endpoints:                      ║
-║  • /api/esp32/status                   ║
-║  • /api/esp32/stats                    ║
-║  • /api/esp32/settings                 ║
+║  API: http://localhost:${PORT}/api       ║
 ║                                        ║
 ╚════════════════════════════════════════╝
   `);

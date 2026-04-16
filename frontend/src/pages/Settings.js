@@ -13,7 +13,8 @@ import {
   Divider,
   Chip,
   Card,
-  CardContent
+  CardContent,
+  CircularProgress
 } from '@mui/material';
 import Alert from '@mui/material/Alert';
 import {
@@ -39,6 +40,7 @@ const Settings = () => {
     invertY: false
   });
   const [originalSettings, setOriginalSettings] = useState({});
+  const [loading, setLoading] = useState(true);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
   const [isESP32Connected, setIsESP32Connected] = useState(false);
 
@@ -46,6 +48,7 @@ const Settings = () => {
   const showSnackbar = (message, severity) => setSnackbar({ open: true, message, severity });
 
   const fetchSettings = useCallback(async () => {
+    setLoading(true);
     try {
       // Try ESP32 first (live)
       try {
@@ -54,9 +57,9 @@ const Settings = () => {
         const merged = {
           baseSensitivity: d.baseSensitivity ?? 10,
           threshold: d.threshold ?? 0.01,
-          dynamicScaling: true, // these aren't on device in the current sketch
-          invertX: true,
-          invertY: false
+          dynamicScaling: d.dynamicScaling ?? true,
+          invertX: d.invertX ?? true,
+          invertY: d.invertY ?? false
         };
         setSettings(merged);
         setOriginalSettings(merged);
@@ -65,11 +68,21 @@ const Settings = () => {
         // Fallback to DB
         setIsESP32Connected(false);
         const response = await getSettings();
-        setSettings(response.data);
-        setOriginalSettings(response.data);
+        const d = response.data || {};
+        const merged = {
+          baseSensitivity: d.baseSensitivity ?? 10,
+          threshold: d.threshold ?? 0.01,
+          dynamicScaling: d.dynamicScaling ?? true,
+          invertX: d.invertX ?? true,
+          invertY: d.invertY ?? false
+        };
+        setSettings(merged);
+        setOriginalSettings(merged);
       }
     } catch {
       showSnackbar('Error loading settings', 'error');
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -110,6 +123,14 @@ const Settings = () => {
       showSnackbar('Error resetting settings', 'error');
     }
   };
+
+  if (loading) {
+    return (
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
+        <CircularProgress size={48} />
+      </Box>
+    );
+  }
 
   return (
     <Container maxWidth="md" sx={{ mt: 4, mb: 4 }}>
