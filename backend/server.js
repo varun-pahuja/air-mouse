@@ -12,10 +12,9 @@ const app = express();
 // Connect to MongoDB (uses db.js exclusively — no double connect)
 connectDB();
 
-// ── Middleware ──
 // FIX: restrict CORS to known origin instead of wildcard
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000',
+  origin: process.env.CLIENT_ORIGIN || 'http://localhost:4000',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
@@ -287,10 +286,10 @@ app.listen(PORT, () => {
 ║                                        ║
 ║  ✓ Server running on port ${PORT}         ║
 ║  ✓ MongoDB: via db.js connectDB()      ║
-║  ✓ CORS origin: ${process.env.CLIENT_ORIGIN || 'http://localhost:3000'}  ║
-║  ✓ ESP32 IP: 172.20.220.228          ║
+║  ✓ CORS origin: ${process.env.CLIENT_ORIGIN || 'http://localhost:4000'}  ║
+║  ✓ ESP32 IP: 10.210.199.68             ║
 ║                                        ║
-║  Dashboard: http://localhost:3000     ║
+║  Dashboard: http://localhost:4000      ║
 ║  API: http://localhost:${PORT}/api       ║
 ║                                        ║
 ╚════════════════════════════════════════╝

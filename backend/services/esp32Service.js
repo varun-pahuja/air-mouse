@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 // YOUR ESP32 IP ADDRESS - ALREADY SET!
-const ESP32_IP = 'http://172.20.220.228';
+const ESP32_IP = 'http://10.210.199.68';
 
 class ESP32Service {
   constructor() {
@@ -12,10 +12,11 @@ class ESP32Service {
   // Check if ESP32 is reachable
   async checkConnection() {
     try {
-      const response = await axios.get(`${this.baseURL}/status`, { timeout: 2000 });
+      const response = await axios.get(`${this.baseURL}/status`, { timeout: 5000 });
       this.connected = true;
       return response.data;
     } catch (error) {
+      console.error("ESP32 Connection Error:", error.message);
       this.connected = false;
       return null;
     }
@@ -24,8 +25,15 @@ class ESP32Service {
   // Get current settings from ESP32
   async getSettings() {
     try {
-      const response = await axios.get(`${this.baseURL}/settings`, { timeout: 2000 });
-      return response.data;
+      const response = await axios.get(`${this.baseURL}/settings`, { timeout: 5000 });
+      const espData = response.data;
+      
+      return {
+        sensitivity: Math.round((espData.sens || 0.6) / 0.012),
+        threshold: espData.th || 0.04,
+        invertX: espData.invX || false,
+        invertY: espData.invY || false
+      };
     } catch (error) {
       throw new Error('Cannot connect to ESP32');
     }
@@ -34,9 +42,17 @@ class ESP32Service {
   // Update settings on ESP32
   async updateSettings(settings) {
     try {
-      const response = await axios.post(`${this.baseURL}/settings`, settings, {
+      // Map standard frontend fields config payload to short ESP32 variables
+      const payload = {
+        sens: settings.sensitivity !== undefined ? (settings.sensitivity * 0.012).toFixed(3) : 0.6,
+        th: settings.threshold !== undefined ? settings.threshold : 0.04,
+        invX: settings.invertX !== undefined ? settings.invertX : false,
+        invY: settings.invertY !== undefined ? settings.invertY : false
+      };
+
+      const response = await axios.post(`${this.baseURL}/settings`, payload, {
         headers: { 'Content-Type': 'application/json' },
-        timeout: 2000
+        timeout: 5000
       });
       return response.data;
     } catch (error) {
@@ -47,8 +63,11 @@ class ESP32Service {
   // Get statistics from ESP32
   async getStats() {
     try {
-      const response = await axios.get(`${this.baseURL}/stats`, { timeout: 2000 });
-      return response.data;
+      const [statsRes, motionRes] = await Promise.all([
+        axios.get(`${this.baseURL}/stats`, { timeout: 5000 }).catch(() => ({ data: {} })),
+        axios.get(`${this.baseURL}/motion`, { timeout: 5000 }).catch(() => ({ data: {} }))
+      ]);
+      return { ...statsRes.data, ...motionRes.data };
     } catch (error) {
       throw new Error('Cannot get ESP32 stats');
     }
@@ -57,7 +76,7 @@ class ESP32Service {
   // Reset statistics
   async resetStats() {
     try {
-      const response = await axios.post(`${this.baseURL}/stats/reset`, {}, { timeout: 2000 });
+      const response = await axios.post(`${this.baseURL}/stats/reset`, {}, { timeout: 5000 });
       return response.data;
     } catch (error) {
       throw new Error('Cannot reset ESP32 stats');
@@ -67,7 +86,7 @@ class ESP32Service {
   // Get device info
   async getDeviceInfo() {
     try {
-      const response = await axios.get(`${this.baseURL}/info`, { timeout: 2000 });
+      const response = await axios.get(`${this.baseURL}/info`, { timeout: 5000 });
       return response.data;
     } catch (error) {
       throw new Error('Cannot get ESP32 info');
