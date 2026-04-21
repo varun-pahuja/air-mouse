@@ -1,67 +1,73 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getProfiles, createProfile, updateProfile as updateProfileApi, deleteProfile as deleteProfileApi, switchProfile as switchProfileApi } from "../services/api";
 
 export function useProfiles() {
-  const [profiles, setProfiles] = useState([
-    {
-      id: 1,
-      name: "User A",
-      initial: "A",
-      sensitivity: 75,
-      active: true,
-      gestureCount: 12,
-      color: "#9a3f3f",
-    },
-    {
-      id: 2,
-      name: "User B",
-      initial: "B",
-      sensitivity: 60,
-      active: false,
-      gestureCount: 8,
-      color: "#c1856d",
-    },
-    {
-      id: 3,
-      name: "User C",
-      initial: "C",
-      sensitivity: 50,
-      active: false,
-      gestureCount: 15,
-      color: "#8b6914",
-    },
-  ]);
-
+  const [profiles, setProfiles] = useState([]);
   const [editingProfile, setEditingProfile] = useState(null);
 
-  const activeProfile = profiles.find((p) => p.active) || profiles[0];
+  useEffect(() => {
+    fetchProfiles();
+  }, []);
 
-  const addProfile = () => {
-    const newProfile = {
-      id: profiles.length + 1,
-      name: `User ${String.fromCharCode(65 + profiles.length)}`,
-      initial: String.fromCharCode(65 + profiles.length),
-      sensitivity: 50,
-      active: false,
-      gestureCount: 0,
-      color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
-    };
-    setProfiles([...profiles, newProfile]);
+  const fetchProfiles = async () => {
+    try {
+      const { data } = await getProfiles();
+      // Map _id to id for UI consistency
+      const mapped = data.map(p => ({ ...p, id: p._id }));
+      setProfiles(mapped);
+    } catch (err) {
+      console.error("Failed to fetch profiles", err);
+    }
   };
 
-  const switchProfile = (profileId) => {
-    setProfiles(profiles.map((p) => ({ ...p, active: p.id === profileId })));
+  const activeProfile = profiles.find((p) => p.active) || profiles[0] || null;
+
+  const addProfile = async () => {
+    try {
+      const newName = `User ${String.fromCharCode(65 + profiles.length)}`;
+      const { data } = await createProfile({
+        name: newName,
+        initial: String.fromCharCode(65 + profiles.length),
+        sensitivity: 50,
+        active: false,
+        color: `#${Math.floor(Math.random() * 16777215).toString(16)}`,
+      });
+      setProfiles([...profiles, { ...data, id: data._id }]);
+    } catch (err) {
+      console.error("Failed to add profile", err);
+    }
   };
 
-  const updateProfile = (updatedProfile) => {
-    setProfiles(
-      profiles.map((p) => (p.id === updatedProfile.id ? updatedProfile : p)),
-    );
-    setEditingProfile(null);
+  const switchProfile = async (profileId) => {
+    try {
+      await switchProfileApi(profileId);
+      // locally optimize
+      setProfiles(profiles.map((p) => ({ ...p, active: p.id === profileId })));
+    } catch (err) {
+      console.error("Failed to switch profile", err);
+    }
   };
 
-  const deleteProfile = (profileId) => {
+  const updateProfile = async (updatedProfile) => {
+    try {
+      const { data } = await updateProfileApi(updatedProfile.id, updatedProfile);
+      setProfiles(
+        profiles.map((p) => (p.id === updatedProfile.id ? { ...data, id: data._id } : p)),
+      );
+      setEditingProfile(null);
+    } catch (err) {
+      console.error("Failed to update profile", err);
+    }
+  };
+
+  const deleteProfile = async (profileId) => {
     if (profiles.length > 1) {
-      setProfiles(profiles.filter((p) => p.id !== profileId));
+      try {
+        await deleteProfileApi(profileId);
+        await fetchProfiles(); // re-fetch to ensure active status fallback works
+      } catch (err) {
+        console.error("Failed to delete profile", err);
+      }
     }
   };
 

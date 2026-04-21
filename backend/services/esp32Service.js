@@ -1,12 +1,30 @@
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
-// YOUR ESP32 IP ADDRESS - ALREADY SET!
-const ESP32_IP = 'http://10.210.199.68';
+const ipFilePath = path.join(__dirname, '../esp32_ip.txt');
+let ESP32_IP = 'http://10.210.199.68'; // Fallback
+
+try {
+  if (fs.existsSync(ipFilePath)) {
+    ESP32_IP = fs.readFileSync(ipFilePath, 'utf8').trim();
+  }
+} catch (e) {}
 
 class ESP32Service {
   constructor() {
     this.baseURL = ESP32_IP;
     this.connected = false;
+  }
+
+  setBaseURL(ip) {
+    if (!ip.startsWith('http')) ip = `http://${ip}`;
+    this.baseURL = ip;
+    try {
+      fs.writeFileSync(ipFilePath, ip, 'utf8');
+    } catch (e) {
+      console.error("Failed to save IP to file:", e.message);
+    }
   }
 
   // Check if ESP32 is reachable

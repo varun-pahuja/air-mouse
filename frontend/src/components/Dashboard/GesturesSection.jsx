@@ -10,8 +10,10 @@ export function GesturesSection({
   setNewGestureName,
   setIsRecording,
   updateGestureAction,
+  deleteGesture,
   saveNewGesture,
   cancelRecording,
+  deviceData,
 }) {
   return (
     <motion.div
@@ -38,6 +40,7 @@ export function GesturesSection({
           gestures={gestures}
           actionOptions={actionOptions}
           updateGestureAction={updateGestureAction}
+          deleteGesture={deleteGesture}
         />
       </motion.div>
 
@@ -53,6 +56,8 @@ export function GesturesSection({
           setIsRecording={setIsRecording}
           saveNewGesture={saveNewGesture}
           cancelRecording={cancelRecording}
+          deviceData={deviceData}
+          actionOptions={actionOptions}
         />
       </motion.div>
     </motion.div>

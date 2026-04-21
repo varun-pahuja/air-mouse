@@ -2,6 +2,7 @@ import { DarkModeToggle } from "./DarkModeToggle";
 import { SensitivityControl } from "./SensitivityControl";
 import { DeviceActions } from "./DeviceActions";
 import { DeviceSpecs } from "./DeviceSpecs";
+import { IPConfiguration } from "./IPConfiguration";
 
 export function SettingsSection({
   darkMode,
@@ -22,6 +23,7 @@ export function SettingsSection({
       </h2>
 
       <div className="space-y-4">
+        <IPConfiguration />
         <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
         <SensitivityControl
           sensitivity={sensitivity}

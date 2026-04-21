@@ -40,6 +40,8 @@ export function useDashboardData() {
           ...prev,
           ...stats,
           connected: status.connected || false,
+          bluetooth: status.ble || false,
+          wifi: status.connected ? true : false,
           ax: stats.ax || prev.ax,
           ay: stats.ay || prev.ay,
           az: stats.az || prev.az,

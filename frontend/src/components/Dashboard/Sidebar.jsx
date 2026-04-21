@@ -2,6 +2,7 @@ export function Sidebar({ activeSection, setActiveSection }) {
   const navItems = [
     { id: "dashboard", label: "Dashboard", icon: "▦" },
     { id: "gestures", label: "Gestures", icon: "⟳" },
+    { id: "testing", label: "Testing", icon: "⚗" },
     { id: "profiles", label: "Profiles", icon: "◉" },
     { id: "analytics", label: "Analytics", icon: "▭" },
     { id: "settings", label: "Settings", icon: "⚙" },

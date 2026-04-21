@@ -1,17 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getGestures, createGesture, updateGesture as updateGestureApi, deleteGesture as deleteGestureApi } from "../services/api";
 
 export function useGestures(activeProfile) {
-  const [gestures, setGestures] = useState([
-    { name: "V Shape", action: "Next Slide", user: "A" },
-    { name: "O Shape", action: "Previous Slide", user: "A" },
-    { name: "Swipe Left", action: "Scroll Down", user: "A" },
-    { name: "Swipe Right", action: "Scroll Up", user: "A" },
-    { name: "Circle", action: "Left Click", user: "A" },
-    { name: "Shake", action: "Right Click", user: "A" },
-    { name: "Tilt Up", action: "Volume Up", user: "A" },
-    { name: "Tilt Down", action: "Volume Down", user: "A" },
-  ]);
-
+  const [gestures, setGestures] = useState([]);
   const [isRecording, setIsRecording] = useState(false);
   const [newGestureName, setNewGestureName] = useState("");
 
@@ -28,20 +19,64 @@ export function useGestures(activeProfile) {
     "Volume Down",
   ];
 
-  const updateGestureAction = (index, action) => {
-    const updated = [...gestures];
-    updated[index].action = action;
-    setGestures(updated);
+  useEffect(() => {
+    if (activeProfile && activeProfile.id) {
+      fetchGestures();
+    }
+  }, [activeProfile]);
+
+  const fetchGestures = async () => {
+    try {
+      const { data } = await getGestures(activeProfile.id);
+      const mapped = data.map(g => ({ ...g, id: g._id }));
+      setGestures(mapped);
+    } catch (err) {
+      console.error("Failed to fetch gestures", err);
+    }
   };
 
-  const saveNewGesture = () => {
-    if (newGestureName) {
-      setGestures([
-        ...gestures,
-        { name: newGestureName, action: "None", user: activeProfile.initial },
-      ]);
-      setNewGestureName("");
-      setIsRecording(false);
+  const updateGestureAction = async (index, action) => {
+    try {
+      const gesture = gestures[index];
+      const { data } = await updateGestureApi(gesture.id, { action });
+      const updated = [...gestures];
+      updated[index] = { ...data, id: data._id };
+      setGestures(updated);
+    } catch (err) {
+      console.error("Failed to update gesture", err);
+    }
+  };
+
+  const deleteGesture = async (index) => {
+    try {
+      const gesture = gestures[index];
+      await deleteGestureApi(gesture.id);
+      const updated = [...gestures];
+      updated.splice(index, 1);
+      setGestures(updated);
+    } catch (err) {
+      console.error("Failed to delete gesture", err);
+    }
+  };
+
+  const saveNewGesture = async (selectedAction = "None") => {
+    if (newGestureName && activeProfile) {
+      try {
+        const { data } = await createGesture({
+          name: newGestureName,
+          action: selectedAction,
+          profileId: activeProfile.id,
+          user: activeProfile.initial
+        });
+        setGestures([
+          ...gestures,
+          { ...data, id: data._id }
+        ]);
+        setNewGestureName("");
+        setIsRecording(false);
+      } catch (err) {
+        console.error("Failed to save new gesture", err);
+      }
     }
   };
 
@@ -58,6 +93,7 @@ export function useGestures(activeProfile) {
     setIsRecording,
     setNewGestureName,
     updateGestureAction,
+    deleteGesture,
     saveNewGesture,
     cancelRecording,
   };

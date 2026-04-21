@@ -2,6 +2,7 @@ export function MobileNav({ activeSection, setActiveSection }) {
   const navItems = [
     { id: "dashboard", icon: "▦" },
     { id: "gestures", icon: "⟳" },
+    { id: "testing", icon: "⚗" },
     { id: "profiles", icon: "◉" },
     { id: "analytics", icon: "▭" },
     { id: "settings", icon: "⚙" },

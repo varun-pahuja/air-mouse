@@ -6,13 +6,14 @@
 #include <ArduinoJson.h>
 
 // ───── CONFIG ─────
-const char* ssid = "OPPO";
-const char* pass = "87654321";
+// AP Mode: ESP32 creates its own WiFi network
+const char* ap_ssid = "AirMouse-WiFi";
+const char* ap_pass = "airmouse123";
 
 #define MPU_ADDR 0x68
 
 MPU6500_WE mpu(MPU_ADDR);
-BleMouse bleMouse("AirMouse Stable");
+BleMouse bleMouse("AirMouse", "ESP32", 100);
 AsyncWebServer server(80);
 
 // Buttons
@@ -21,49 +22,94 @@ AsyncWebServer server(80);
 #define BTN_UP 33
 #define BTN_DOWN 32
 
-// ───── SETTINGS (TUNED FOR STABILITY) ─────
-float baseSensitivity = 0.6;
-float threshold = 0.04;
-float alpha = 0.9;
-bool invertX = false;
-bool invertY = false;
+// SETTINGS
+float sensitivity = 2.0;
+bool recordMode = false;
+float offsetX = 0;
+float offsetY = 0;
 
-// ───── STATE ─────
-float smoothX = 0, smoothY = 0;
+// STATE
 float liveGX = 0, liveGY = 0, liveGZ = 0;
 float liveAX = 0, liveAY = 0, liveAZ = 0;
 
-// stats
-unsigned long clicks=0, scrolls=0, moves=0, connections=0;
+// 🔥 smoothing must be global
+float smoothX = 0;
+float smoothY = 0;
+
+unsigned long lastSampleTime = 0;
+
+// ───── FUNCTION DECLARATIONS ─────
+void setupServer();
+void readSensor();
+void processMotion();
+void handleButtons();
 
 // ───── SETUP ─────
 void setup() {
   Serial.begin(115200);
-  Wire.begin(21,22);
+  delay(1000);
 
-  if(!mpu.init()){
-    Serial.println("MPU ERROR");
+  Serial.println("Starting...");
+  Wire.begin(21, 22);
+
+  // MPU INIT
+  bool ok = false;
+  for(int i=0;i<5;i++){
+    if(mpu.init()){
+      ok = true;
+      break;
+    }
+    Serial.println("Retry MPU...");
+    delay(500);
+  }
+
+  if(!ok){
+    Serial.println("❌ MPU FAILED");
     while(1);
   }
 
   delay(1000);
-  Serial.println("Calibrating...");
   mpu.autoOffsets();
+  Serial.println("MPU Ready");
 
+  // DRIFT CALIBRATION
+  Serial.println("Calibrating drift... KEEP STILL");
+
+  float sumX = 0, sumY = 0;
+  for(int i=0;i<200;i++){
+    xyzFloat g = mpu.getGyrValues();   // ✅ FIXED
+    sumX += g.y;
+    sumY += -g.x;
+    delay(5);
+  }
+
+  offsetX = sumX / 200.0;
+  offsetY = sumY / 200.0;
+
+  Serial.println("Drift calibrated");
+
+  // Buttons
   pinMode(BTN_LEFT, INPUT_PULLUP);
   pinMode(BTN_RIGHT, INPUT_PULLUP);
   pinMode(BTN_UP, INPUT_PULLUP);
   pinMode(BTN_DOWN, INPUT_PULLUP);
 
+  // BLE FIRST
+  Serial.println("Starting BLE...");
+  delay(2000);
   bleMouse.begin();
+  Serial.println("BLE Started");
 
-  // WiFi
-  WiFi.begin(ssid, pass);
-  while(WiFi.status()!=WL_CONNECTED){
-    delay(300); Serial.print(".");
-  }
-  Serial.println("\nIP:");
-  Serial.println(WiFi.localIP());
+  // WiFi Access Point Mode
+  Serial.println("Starting WiFi AP...");
+  WiFi.mode(WIFI_AP);
+  WiFi.softAP(ap_ssid, ap_pass);
+  delay(100);
+
+  Serial.println("✅ WiFi AP Started!");
+  Serial.print("Network: "); Serial.println(ap_ssid);
+  Serial.print("Password: "); Serial.println(ap_pass);
+  Serial.print("IP: "); Serial.println(WiFi.softAPIP());
 
   setupServer();
 }
@@ -71,163 +117,166 @@ void setup() {
 // ───── LOOP ─────
 void loop() {
 
-  static bool prevConn=false;
-  bool now=bleMouse.isConnected();
+  if (millis() - lastSampleTime >= 20) {
+    lastSampleTime = millis();
+    readSensor();
 
-  if(now && !prevConn) connections++;
-  prevConn=now;
+    if(recordMode){
+      Serial.printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n",
+        liveAX, liveAY, liveAZ,
+        liveGX, liveGY, liveGZ);
+    }
+  }
 
-  xyzFloat g = mpu.getGyrValues();
-  xyzFloat a = mpu.getAccValues();
+  // BLE reconnect logic
+  if(!bleMouse.isConnected()){
+    static bool wasConnected = false;
 
-  float rawX = g.y;
-  float rawY = -g.x;
+    if(wasConnected){
+      Serial.println("BLE Disconnected → restarting...");
+      delay(1000);
+      ESP.restart();
+    }
 
-  liveGX = rawX;
-  liveGY = rawY;
+    wasConnected = false;
+    delay(100);
+    return;
+  }
+
+  static bool wasConnected = true;
+
+  processMotion();
+  handleButtons();
+
+  delay(10);
+}
+
+// ───── SENSOR ─────
+void readSensor() {
+  xyzFloat g = mpu.getGyrValues();   // ✅ FIXED
+  xyzFloat a = mpu.getGValues();
+
+  liveGX = g.y;
+  liveGY = -g.x;
   liveGZ = g.z;
 
   liveAX = a.x;
   liveAY = a.y;
   liveAZ = a.z;
-
-  // deadzone
-  if(abs(rawX) < threshold) rawX = 0;
-  if(abs(rawY) < threshold) rawY = 0;
-
-  // smoothing (EMA)
-  smoothX = alpha*smoothX + (1-alpha)*rawX;
-  smoothY = alpha*smoothY + (1-alpha)*rawY;
-
-  float fx = invertX ? -smoothX : smoothX;
-  float fy = invertY ? -smoothY : smoothY;
-
-  // 🔥 STABLE DYNAMIC SCALING
-  float speed = sqrt(smoothX*smoothX + smoothY*smoothY);
-  float dynamic = 1.0 + (speed * 0.1);
-
-  float mx = fx * baseSensitivity * dynamic;
-  float my = fy * baseSensitivity * dynamic;
-
-  // soft limiting (prevents jumps)
-  mx = mx / (1 + abs(mx) * 0.1);
-  my = my / (1 + abs(my) * 0.1);
-
-  int dx = (int)mx;
-  int dy = (int)my;
-
-  // jitter removal
-  if(abs(dx) < 2) dx = 0;
-  if(abs(dy) < 2) dy = 0;
-
-  if(now){
-    if(dx || dy){
-      bleMouse.move(dx, dy);
-      moves++;
-    }
-
-    handleButtons();
-  }
-
-  delay(10); // slower = smoother
 }
 
-// ───── BUTTON HANDLING ─────
-void handleButtons(){
+// ───── MOTION ─────
+void processMotion() {
 
-  static bool lPrev=0, rPrev=0;
+  float gx = liveGX - offsetX;
+  float gy = liveGY - offsetY;
 
-  bool lNow = digitalRead(BTN_LEFT)==LOW;
+  if(abs(gx) < 0.05) gx = 0;
+  if(abs(gy) < 0.05) gy = 0;
+
+  smoothX = 0.85 * smoothX + 0.15 * gx;
+  smoothY = 0.85 * smoothY + 0.15 * gy;
+
+  float speed = sqrt(smoothX*smoothX + smoothY*smoothY);
+  float scale = 1.0 + speed * 1.2;
+
+  float dx = smoothX * scale * sensitivity;
+  float dy= smoothY * scale * sensitivity;
+
+  if(abs(gx) < 0.08) gx = 0;
+  if(abs(gy) < 0.08) gy = 0;
+
+  bleMouse.move(dx, dy);
+}
+
+// ───── BUTTONS ─────
+void handleButtons() {
+
+  static bool lPrev = false, rPrev = false;
+
+  bool lNow = digitalRead(BTN_LEFT) == LOW;
   if(lNow && !lPrev){
     bleMouse.click(MOUSE_LEFT);
-    clicks++;
   }
   lPrev = lNow;
 
-  bool rNow = digitalRead(BTN_RIGHT)==LOW;
+  bool rNow = digitalRead(BTN_RIGHT) == LOW;
   if(rNow && !rPrev){
     bleMouse.click(MOUSE_RIGHT);
-    clicks++;
   }
   rPrev = rNow;
 
-  static unsigned long lastScroll=0;
+  if(digitalRead(BTN_UP) == LOW){
+    bleMouse.move(0,0,1);
+    delay(100);
+  }
 
-  if(millis() - lastScroll > 120){
-    if(digitalRead(BTN_UP)==LOW){
-      bleMouse.move(0,0,1);
-      scrolls++;
-      lastScroll = millis();
-    }
-    if(digitalRead(BTN_DOWN)==LOW){
-      bleMouse.move(0,0,-1);
-      scrolls++;
-      lastScroll = millis();
-    }
+  if(digitalRead(BTN_DOWN) == LOW){
+    bleMouse.move(0,0,-1);
+    delay(100);
   }
 }
 
-// ───── DASHBOARD SERVER ─────
-void setupServer(){
-
-  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req){
-    StaticJsonDocument<128> doc;
-    doc["ble"]=bleMouse.isConnected();
-    doc["ip"]=WiFi.localIP().toString();
-    String res; serializeJson(doc,res);
-    req->send(200,"application/json",res);
-  });
+// ───── SERVER ─────
+void setupServer() {
 
   server.on("/motion", HTTP_GET, [](AsyncWebServerRequest *req){
     StaticJsonDocument<256> doc;
-    doc["ax"]=liveAX;
-    doc["ay"]=liveAY;
-    doc["az"]=liveAZ;
-    doc["gx"]=liveGX;
-    doc["gy"]=liveGY;
-    doc["gz"]=liveGZ;
-    String res; serializeJson(doc,res);
-    req->send(200,"application/json",res);
+    doc["ax"] = liveAX;
+    doc["ay"] = liveAY;
+    doc["az"] = liveAZ;
+    doc["gx"] = liveGX;
+    doc["gy"] = liveGY;
+    doc["gz"] = liveGZ;
+
+    String res;
+    serializeJson(doc, res);
+    req->send(200, "application/json", res);
   });
 
+  server.on("/record", HTTP_POST, [](AsyncWebServerRequest *req){
+    recordMode = !recordMode;
+    req->send(200, "text/plain", recordMode ? "ON" : "OFF");
+  });
+
+  // 🔥 ADDED STATUS API
+  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *req){
+    StaticJsonDocument<128> doc;
+    doc["ble"] = bleMouse.isConnected();
+    doc["ip"] = WiFi.softAPIP().toString();
+
+    String res;
+    serializeJson(doc, res);
+    req->send(200, "application/json", res);
+  });
+
+  // Dashboard Stats Compatibility
   server.on("/stats", HTTP_GET, [](AsyncWebServerRequest *req){
     StaticJsonDocument<128> doc;
-    doc["clicks"]=clicks;
-    doc["scrolls"]=scrolls;
-    doc["moves"]=moves;
-    doc["connections"]=connections;
-    String res; serializeJson(doc,res);
-    req->send(200,"application/json",res);
+    doc["clicks"] = 0; doc["scrolls"] = 0; doc["moves"] = 0; doc["connections"] = bleMouse.isConnected() ? 1 : 0;
+    String res; serializeJson(doc, res); req->send(200, "application/json", res);
   });
 
+  // Dashboard Settings Compatibility
   server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *req){
     StaticJsonDocument<128> doc;
-    doc["sens"] = baseSensitivity;
-    doc["th"] = threshold;
-    doc["invX"] = invertX;
-    doc["invY"] = invertY;
-    String res; serializeJson(doc,res);
-    req->send(200,"application/json",res);
+    doc["sens"] = sensitivity;
+    doc["th"] = 0.05;
+    doc["invX"] = false;
+    doc["invY"] = false;
+    doc["recordMode"] = recordMode;
+    String res; serializeJson(doc, res); req->send(200, "application/json", res);
   });
 
-  server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *req){},NULL,
-  [](AsyncWebServerRequest *req,uint8_t *data,size_t len,size_t,size_t){
+  server.on("/settings", HTTP_POST, [](AsyncWebServerRequest *req){}, NULL,
+  [](AsyncWebServerRequest *req, uint8_t *data, size_t len, size_t, size_t){
+    StaticJsonDocument<256> doc;
+    deserializeJson(doc, data);
 
+    if(doc.containsKey("sens")) sensitivity = doc["sens"];
+    if(doc.containsKey("recordMode")) recordMode = doc["recordMode"];
 
-    StaticJsonDocument<128> doc;
-    deserializeJson(doc,data);
-
-    if(doc["sens"]) baseSensitivity = doc["sens"];
-    if(doc["th"]) threshold = doc["th"];
-    if(doc["invX"]) invertX = doc["invX"];
-    if(doc["invY"]) invertY = doc["invY"];
-
-    req->send(200,"application/json","{\"ok\":true}");
-  });
-
-  server.on("/calibrate", HTTP_POST, [](AsyncWebServerRequest *req){
-    mpu.autoOffsets();
-    req->send(200,"application/json","{\"status\":\"calibrated\"}");
+    req->send(200, "application/json", "{\"ok\":true}");
   });
 
   server.begin();

@@ -5,6 +5,8 @@ require('dotenv').config();
 const connectDB = require('./config/db');
 const settingsRoutes = require('./routes/settings');
 const usageRoutes = require('./routes/usage');
+const profilesRoutes = require('./routes/profiles');
+const gesturesRoutes = require('./routes/gestures');
 const esp32Service = require('./services/esp32Service');
 
 const app = express();
@@ -26,6 +28,8 @@ app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 // ── Routes ──
 app.use('/api/settings', settingsRoutes);
 app.use('/api/usage', usageRoutes);
+app.use('/api/profiles', profilesRoutes);
+app.use('/api/gestures', gesturesRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -38,12 +42,23 @@ app.get('/api/esp32/status', async (req, res) => {
   try {
     const status = await esp32Service.checkConnection();
     if (status) {
-      res.json({ connected: true, ...status });
+      res.json({ connected: true, ...status, ip: esp32Service.baseURL });
     } else {
-      res.json({ connected: false, message: 'ESP32 not reachable' });
+      res.json({ connected: false, message: 'ESP32 not reachable', ip: esp32Service.baseURL });
     }
   } catch (error) {
-    res.status(500).json({ connected: false, error: error.message });
+    res.status(500).json({ connected: false, error: error.message, ip: esp32Service.baseURL });
+  }
+});
+
+app.post('/api/esp32/ip', (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) return res.status(400).json({ error: "IP address is required" });
+    esp32Service.setBaseURL(ip);
+    res.json({ success: true, message: "IP updated", ip: esp32Service.baseURL });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 

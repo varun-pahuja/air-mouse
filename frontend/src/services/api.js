@@ -46,6 +46,19 @@ export const getRecentLogs   = (limit=50)   => api.get(`/usage/recent?limit=${li
 export const getTeam         = ()           => api.get('/team');
 export const getComponents   = ()           => api.get('/components');
 
+// ── Profiles API (MongoDB) ──────────────────────────────────────────────────
+export const getProfiles     = ()           => api.get('/profiles');
+export const createProfile   = (data)       => api.post('/profiles', data);
+export const updateProfile   = (id, data)   => api.put(`/profiles/${id}`, data);
+export const deleteProfile   = (id)         => api.delete(`/profiles/${id}`);
+export const switchProfile   = (id)         => api.post(`/profiles/switch/${id}`);
+
+// ── Gestures API (MongoDB) ──────────────────────────────────────────────────
+export const getGestures     = (profileId)  => api.get(profileId ? `/gestures?profileId=${profileId}` : '/gestures');
+export const createGesture   = (data)       => api.post('/gestures', data);
+export const updateGesture   = (id, data)   => api.put(`/gestures/${id}`, data);
+export const deleteGesture   = (id)         => api.delete(`/gestures/${id}`);
+
 // ── ESP32 Real-Time APIs ───────────────────────────────────────────────────
 export const getESP32Status   = ()           => api.get('/esp32/status');
 export const getESP32Settings = ()           => api.get('/esp32/settings');
@@ -53,5 +66,6 @@ export const updateESP32Settings = (s)       => api.post('/esp32/settings', s);
 export const getESP32Stats    = ()           => api.get('/esp32/stats');
 export const resetESP32Stats  = ()           => api.post('/esp32/stats/reset');
 export const getESP32Info     = ()           => api.get('/esp32/info');
+export const updateESP32IP    = (ip)         => api.post('/esp32/ip', { ip });
 
 export default api;

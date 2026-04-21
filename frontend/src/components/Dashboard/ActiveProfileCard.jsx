@@ -1,4 +1,20 @@
 export function ActiveProfileCard({ profile }) {
+  if (!profile) {
+    return (
+      <div className="card">
+        <div className="text-sm mb-2" style={{ color: "var(--text-secondary)", fontFamily: "Syne, sans-serif" }}>
+          Active Profile
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style={{ backgroundColor: "var(--bg-secondary)" }}>
+            -
+          </div>
+          <div className="text-sm" style={{ color: "var(--text-secondary)" }}>Loading profile...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <div

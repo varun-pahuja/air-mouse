@@ -13,6 +13,7 @@ import { GesturesSection } from "@/components/Dashboard/GesturesSection";
 import { ProfilesSection } from "@/components/Dashboard/ProfilesSection";
 import { AnalyticsSection } from "@/components/Dashboard/AnalyticsSection";
 import { SettingsSection } from "@/components/Dashboard/SettingsSection";
+import { TestingSection } from "@/components/Dashboard/TestingSection";
 import { GlobalStyles } from "@/components/Dashboard/GlobalStyles";
 
 export default function Dashboard() {
@@ -39,6 +40,7 @@ export default function Dashboard() {
     setIsRecording,
     setNewGestureName,
     updateGestureAction,
+    deleteGesture,
     saveNewGesture,
     cancelRecording,
   } = useGestures(activeProfile);
@@ -88,8 +90,10 @@ export default function Dashboard() {
                 setNewGestureName={setNewGestureName}
                 setIsRecording={setIsRecording}
                 updateGestureAction={updateGestureAction}
+                deleteGesture={deleteGesture}
                 saveNewGesture={saveNewGesture}
                 cancelRecording={cancelRecording}
+                deviceData={deviceData}
               />
             )}
 
@@ -106,6 +110,10 @@ export default function Dashboard() {
             )}
 
             {activeSection === "analytics" && <AnalyticsSection />}
+
+            {activeSection === "testing" && (
+              <TestingSection deviceData={deviceData} gestures={gestures} />
+            )}
 
             {activeSection === "settings" && (
               <SettingsSection
